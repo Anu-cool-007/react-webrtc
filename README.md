@@ -1,3 +1,9 @@
+# Getting Started with React and MQTT
+- Create new file called `.env` here you will have your custom configuration
+- You can find example of the configuration in `.env.development` file
+- Run `npm start`
+
+**Below is default docs of Create React App**
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
