@@ -13,12 +13,13 @@ function App() {
   const [callerId, setCallerId] = useState("");
   const [callerSignal, setCallerSignal] = useState("");
   const [callAccepted, setCallAccepted] = useState("");
+  const [peer, setPeer] = useState();
 
   const userVideo = useRef();
   const partnerVideo = useRef();
 
   useEffect(() => {
-    const topics = ["rtc/offer/#", "rtc/answer/#"];
+    const topics = ["rtc/#"];
 
     mqttClient.on("connect", function () {
       setIsConnected(true);
@@ -31,16 +32,17 @@ function App() {
 
     mqttClient.on("message", (topic, message) => {
       switch (true) {
-        case /rtc\/ans\/.+/.test(topic): {
+        case /rtc\/.*\/ans/.test(topic): {
           console.log("Offer sent", message.toString());
           break;
         }
-        case /rtc\/offer\/.+/.test(topic): {
+        case /rtc\/.*\/offer/.test(topic): {
+          console.log(message.toString());
           const data = JSON.parse(message.toString());
-          if (data.from && data.from !== yourId) {
-            console.log("Offer recieved from", data.from);
+          if (data.senderId && data.senderId !== yourId) {
+            console.log("Offer recieved from", data.senderId);
             setRecievingCall(true);
-            setCallerId(data.from);
+            setCallerId(data.senderId);
             setCallerSignal(data.signalData);
           }
 
@@ -75,25 +77,28 @@ function App() {
     });
 
     peer.on("signal", (data) => {
-      mqttClient.publish(
-        "rtc/offer/" + yourId,
-        JSON.stringify({ signalData: data, from: yourId }),
-        { retain: true }
-      );
+      const offer_payload = { signalData: data, senderId: yourId };
+      console.log(offer_payload);
+      mqttClient.publish(`rtc/${yourId}/offer`, JSON.stringify(offer_payload), {
+        retain: true,
+      });
     });
 
     peer.on("stream", (stream) => {
+      console.log("recieved stream");
       if (partnerVideo.current) {
         partnerVideo.current.srcObject = stream;
       }
     });
 
     mqttClient.on("message", (topic, message) => {
-      if (topic === "rtc/answer/" + yourId) {
+      if (topic === `rtc/${yourId}/answer`) {
         setCallAccepted(true);
         peer.signal(JSON.parse(message.toString()).signalData);
       }
     });
+
+    setPeer(peer);
   };
 
   const acceptCall = () => {
@@ -101,13 +106,13 @@ function App() {
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      stream: stream,
+      // stream: stream,
     });
 
     peer.on("signal", (data) => {
       mqttClient.publish(
-        "rtc/answer/" + callerId,
-        JSON.stringify({ signalData: data, from: yourId }),
+        `rtc/${callerId}/answer`,
+        JSON.stringify({ signalData: data, senderId: yourId }),
         { retain: true }
       );
     });
@@ -119,6 +124,11 @@ function App() {
     });
 
     peer.signal(callerSignal);
+    setPeer(peer);
+  };
+
+  const onStartServer = () => {
+    mqttClient.publish("python/mqtt/start-rtc", "start", { retain: true });
   };
 
   let UserVideo;
@@ -140,6 +150,9 @@ function App() {
       </div>
     );
   }
+  const handleConnClose = () => {
+    peer.destroy();
+  };
 
   return (
     <main className="mt-3">
@@ -152,6 +165,7 @@ function App() {
               </Alert.Heading>
             </Alert>
           </Col>
+          <button onClick={onStartServer}>Start Server</button>
         </Row>
         <Row className="justify-content-center">
           <Col lg={12} className="text-center">
@@ -164,6 +178,7 @@ function App() {
         <Row>{incomingCall}</Row>
         <Row>{UserVideo}</Row>
         <Row>{PartnerVideo}</Row>
+        <button onClick={handleConnClose}>Close Connection</button>
       </Container>
     </main>
   );
