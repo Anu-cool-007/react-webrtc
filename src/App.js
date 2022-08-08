@@ -38,12 +38,12 @@ function App() {
         }
         case /rtc\/.*\/offer/.test(topic): {
           console.log(message.toString());
+          setCallerId(topic.split("/")[1]);
           const data = JSON.parse(message.toString());
-          if (data.senderId && data.senderId !== yourId) {
-            console.log("Offer recieved from", data.senderId);
+          if ("data.senderId" && "data.senderId" !== yourId) {
+            console.log("Offer recieved from", "data.senderId");
             setRecievingCall(true);
-            setCallerId(data.senderId);
-            setCallerSignal(data.signalData);
+            setCallerSignal(data);
           }
 
           break;
@@ -72,16 +72,22 @@ function App() {
   const offerCall = () => {
     const peer = new Peer({
       initiator: true,
-      trickle: false,
+      trickle: true,
       stream: stream,
     });
 
     peer.on("signal", (data) => {
-      const offer_payload = { signalData: data, senderId: yourId };
+      const offer_payload = data;
       console.log(offer_payload);
-      mqttClient.publish(`rtc/${yourId}/offer`, JSON.stringify(offer_payload), {
-        retain: true,
-      });
+      if (data.type === "offer") {
+        mqttClient.publish(
+          `rtc/${yourId}/offer`,
+          JSON.stringify(offer_payload),
+          {
+            retain: false,
+          }
+        );
+      }
     });
 
     peer.on("stream", (stream) => {
@@ -94,7 +100,7 @@ function App() {
     mqttClient.on("message", (topic, message) => {
       if (topic === `rtc/${yourId}/answer`) {
         setCallAccepted(true);
-        peer.signal(JSON.parse(message.toString()).signalData);
+        peer.signal(JSON.parse(message.toString()));
       }
     });
 
@@ -105,19 +111,32 @@ function App() {
     setCallAccepted(true);
     const peer = new Peer({
       initiator: false,
-      trickle: false,
+      trickle: true,
       // stream: stream,
     });
 
     peer.on("signal", (data) => {
-      mqttClient.publish(
-        `rtc/${callerId}/answer`,
-        JSON.stringify({ signalData: data, senderId: yourId }),
-        { retain: true }
-      );
+      if (data.type === "answer") {
+        mqttClient.publish(`rtc/${callerId}/answer`, JSON.stringify(data), {
+          retain: false,
+        });
+      } else {
+        console.log("Canidate", data);
+        mqttClient.publish(
+          `rtc/${callerId}/candidate`,
+          JSON.stringify(data.candidate),
+          {
+            qos: 2,
+            retain: false,
+          }
+        );
+      }
     });
 
+    peer.on("icecandidate", (e) => console.log(e));
+
     peer.on("stream", (stream) => {
+      console.log("Steram recieved");
       if (partnerVideo.current) {
         partnerVideo.current.srcObject = stream;
       }
@@ -128,7 +147,7 @@ function App() {
   };
 
   const onStartServer = () => {
-    mqttClient.publish("python/mqtt/start-rtc", "start", { retain: true });
+    mqttClient.publish("python/mqtt/start-rtc", "start", { retain: false });
   };
 
   let UserVideo;
