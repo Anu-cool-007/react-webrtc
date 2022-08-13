@@ -1,3 +1,6 @@
+WebRTC app connects to MQTT broker for signalling
+
+
 # Getting Started with React and MQTT
 - Create new file called `.env` here you will have your custom configuration
 - You can find example of the configuration in `.env.development` file
